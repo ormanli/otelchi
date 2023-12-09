@@ -3,7 +3,10 @@ package otelchi
 import (
 	"net/http"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/go-chi/chi/v5"
+	otelmetric "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
@@ -15,6 +18,7 @@ type config struct {
 	ChiRoutes               chi.Routes
 	RequestMethodInSpanName bool
 	Filter                  func(r *http.Request) bool
+	MeterProvider           metric.MeterProvider
 }
 
 // Option specifies instrumentation configuration options.
@@ -78,5 +82,13 @@ func WithRequestMethodInSpanName(isActive bool) Option {
 func WithFilter(filter func(r *http.Request) bool) Option {
 	return optionFunc(func(cfg *config) {
 		cfg.Filter = filter
+	})
+}
+
+// WithMeterProvider specifies a meter provider to use for creating a meter.
+// If none is specified, the global provider is used.
+func WithMeterProvider(provider otelmetric.MeterProvider) Option {
+	return optionFunc(func(cfg *config) {
+		cfg.MeterProvider = provider
 	})
 }
