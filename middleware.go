@@ -168,15 +168,13 @@ func (tw traceware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var attributes []attribute.KeyValue
-
-	attributes = append(attributes, semconv140.NetAttributesFromHTTPRequest("tcp", r)...)
-	attributes = append(attributes, semconv140.EndUserAttributesFromHTTPRequest(r)...)
-	attributes = append(attributes, semconv140.HTTPServerAttributesFromHTTPRequest(tw.serverName, routePattern, r)...)
+	var metricAttributes []attribute.KeyValue
 
 	ctx, span := tw.tracer.Start(
 		ctx, spanName,
-		oteltrace.WithAttributes(attributes...),
+		oteltrace.WithAttributes(semconv140.NetAttributesFromHTTPRequest("tcp", r)...),
+		oteltrace.WithAttributes(semconv140.EndUserAttributesFromHTTPRequest(r)...),
+		oteltrace.WithAttributes(semconv140.HTTPServerAttributesFromHTTPRequest(tw.serverName, routePattern, r)...),
 		oteltrace.WithSpanKind(oteltrace.SpanKindServer),
 	)
 	defer span.End()
@@ -202,21 +200,27 @@ func (tw traceware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if len(routePattern) == 0 {
 		routePattern = chi.RouteContext(r.Context()).RoutePattern()
 		span.SetAttributes(semconv1210.HTTPRouteKey.String(routePattern))
-		attributes = append(attributes, semconv1210.HTTPRoute(routePattern))
+		metricAttributes = append(metricAttributes, semconv1210.HTTPRoute(routePattern))
 
 		spanName = addPrefixToSpanName(tw.reqMethodInSpanName, r.Method, routePattern)
 		span.SetName(spanName)
 	}
 
+	if r.Method != "" {
+		metricAttributes = append(metricAttributes, semconv1210.HTTPMethodKey.String(r.Method))
+	} else {
+		metricAttributes = append(metricAttributes, semconv1210.HTTPMethodKey.String(http.MethodGet))
+	}
+
 	// set status code attribute
 	span.SetAttributes(semconv1210.HTTPStatusCodeKey.Int(rrw.status))
-	attributes = append(attributes, semconv1210.HTTPStatusCode(rrw.status))
+	metricAttributes = append(metricAttributes, semconv1210.HTTPStatusCode(rrw.status))
 
 	// set span status
 	spanStatus, spanMessage := semconv140.SpanStatusFromHTTPStatusCode(rrw.status)
 	span.SetStatus(spanStatus, spanMessage)
 
-	o := metric.WithAttributes(attributes...)
+	o := metric.WithAttributes(metricAttributes...)
 	tw.requestBytesCounter.Add(ctx, rbc.bytes(), o)
 	tw.responseBytesCounter.Add(ctx, rrw.writtenBytes, o)
 
